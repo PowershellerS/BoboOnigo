@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orders — BoboOnigo Seller Dashboard</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <aside class="admin-sidebar">
+    <a class="brand" href="/admin/index.html"><img src="/img/logo.svg" alt="BoboOnigo" class="logo"></a>
+    <a href="/admin/index.html" class="active">Orders</a>
+    <a href="/admin/products.html">Products</a>
+    <a href="/admin/shipping.html">Shipping rates</a>
+    <a href="#" id="logout-btn">Log out</a>
+  </aside>
+  <div class="admin-main">
+    <div id="demo-banner"></div>
+    <div class="admin-toolbar">
+      <h1 style="margin:0;">Orders</h1>
+    </div>
+    <div class="filters" id="filters">
+      <button data-status="to_ship" class="active">To ship</button>
+      <button data-status="pending_payment">Awaiting payment</button>
+      <button data-status="shipped">Shipped</button>
+      <button data-status="delivered">Delivered</button>
+      <button data-status="cancelled">Cancelled</button>
+      <button data-status="all">All</button>
+    </div>
+    <div id="orders-container">Loading…</div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="ship-modal">
+  <div class="modal">
+    <h3>Mark as shipped</h3>
+    <form id="ship-form">
+      <input type="hidden" name="orderId">
+      <div class="form-row"><label>Carrier</label><input type="text" name="carrier" placeholder="e.g. GIG Logistics" required></div>
+      <div class="form-row"><label>Tracking number</label><input type="text" name="trackingNumber" placeholder="e.g. GIG123456" required></div>
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <button type="submit">Confirm shipped</button>
+        <button type="button" class="btn-secondary" id="ship-cancel">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+let currentStatus = 'to_ship';
+
+function statusLabel(s) { return s.replace('_', ' '); }
+
+function orderDeliveryFee(order) {
+  return order.shippingFee === 0 ? 'FREE' : formatNaira(order.shippingFee);
+}
+
+async function loadOrders() {
+  const container = document.getElementById('orders-container');
+  container.innerHTML = 'Loading…';
+  const query = currentStatus === 'to_ship' ? 'paid' : currentStatus;
+  const res = await adminFetch(`/api/admin/orders?status=${encodeURIComponent(query)}`);
+  const data = await res.json();
+  let list = data.orders;
+  if (currentStatus === 'to_ship') {
+    list = list.filter((o) => o.status === 'paid' || o.status === 'processing');
+  }
+
+  if (list.length === 0) {
+    container.innerHTML = '<p class="small-muted">No orders in this view.</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr><th>Order</th><th>Customer</th><th>Items</th><th>Delivery</th><th>Total</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        ${list.map(orderRow).join('')}
+      </tbody>
+    </table>
+  `;
+
+  container.querySelectorAll('[data-action]').forEach((btn) => {
+    btn.addEventListener('click', () => handleAction(btn.dataset.action, parseInt(btn.dataset.id, 10)));
+  });
+}
+
+function orderRow(o) {
+  const freeTag = o.shippingFee === 0 ? '<span class="free-shipping-tag">Free (Lagos)</span>' : `Paid shipping: ${formatNaira(o.shippingFee)}`;
+  let actions = '';
+  if (o.status === 'paid' || o.status === 'processing') {
+    actions += `<button data-action="ship" data-id="${o.id}">Mark shipped</button> `;
+    actions += `<button class="btn-secondary" data-action="cancel" data-id="${o.id}">Cancel</button>`;
+  } else if (o.status === 'pending_payment') {
+    actions += `<button data-action="mark-paid" data-id="${o.id}">Mark paid</button> `;
+    actions += `<button class="btn-secondary" data-action="cancel" data-id="${o.id}">Cancel</button>`;
+  } else if (o.status === 'shipped') {
+    actions += `<button data-action="deliver" data-id="${o.id}">Mark delivered</button>`;
+    if (o.trackingNumber) actions += `<div class="small-muted">${escapeHtml(o.carrier || '')} · ${escapeHtml(o.trackingNumber)}</div>`;
+  } else if (o.status === 'delivered') {
+    actions = `<span class="small-muted">Delivered ${o.deliveredAt || ''}</span>`;
+    if (o.trackingNumber) actions += `<div class="small-muted">${escapeHtml(o.carrier || '')} · ${escapeHtml(o.trackingNumber)}</div>`;
+  } else {
+    actions = '<span class="small-muted">—</span>';
+  }
+
+  return `
+    <tr>
+      <td>#${o.id}<br><span class="small-muted">${o.createdAt}</span></td>
+      <td>${escapeHtml(o.customerName)}<br><span class="small-muted">${escapeHtml(o.phone)}<br>${escapeHtml(o.email)}</span></td>
+      <td>${o.items.map(i => `${escapeHtml(i.name)} × ${i.quantity}`).join('<br>')}</td>
+      <td>${escapeHtml(o.addressLine)}, ${escapeHtml(o.city)}, ${escapeHtml(o.state)}<br><span class="small-muted">${freeTag}</span></td>
+      <td>${formatNaira(o.total)}</td>
+      <td><span class="status-pill status-${o.status}">${statusLabel(o.status)}</span></td>
+      <td>${actions}</td>
+    </tr>
+  `;
+}
+
+async function handleAction(action, id) {
+  if (action === 'ship') {
+    document.getElementById('ship-modal').classList.remove('hidden');
+    document.querySelector('#ship-form [name="orderId"]').value = id;
+    return;
+  }
+  if (action === 'deliver') {
+    if (!confirm('Mark this order as delivered?')) return;
+    await adminFetch(`/api/admin/orders/${id}/deliver`, { method: 'POST' });
+    loadOrders();
+    return;
+  }
+  if (action === 'cancel') {
+    if (!confirm('Cancel this order and restock the items?')) return;
+    await adminFetch(`/api/admin/orders/${id}/cancel`, { method: 'POST' });
+    loadOrders();
+    return;
+  }
+  if (action === 'mark-paid') {
+    if (!confirm('Mark this order as paid manually? Only do this if you have confirmed payment outside the site (e.g. bank transfer).')) return;
+    await adminFetch(`/api/admin/orders/${id}/mark-paid`, { method: 'POST' });
+    loadOrders();
+    return;
+  }
+}
+
+document.getElementById('ship-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const orderId = fd.get('orderId');
+  await adminFetch(`/api/admin/orders/${orderId}/ship`, {
+    method: 'POST',
+    body: JSON.stringify({ carrier: fd.get('carrier'), trackingNumber: fd.get('trackingNumber') }),
+  });
+  document.getElementById('ship-modal').classList.add('hidden');
+  e.target.reset();
+  loadOrders();
+});
+document.getElementById('ship-cancel').addEventListener('click', () => {
+  document.getElementById('ship-modal').classList.add('hidden');
+});
+
+document.querySelectorAll('#filters button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#filters button').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentStatus = btn.dataset.status;
+    loadOrders();
+  });
+});
+
+async function init() {
+  const session = await requireAdminAuth();
+  if (!session) return;
+  wireLogout();
+  if (session.demoMode) {
+    document.getElementById('demo-banner').innerHTML =
+      '<p class="alert alert-info">Demo payment mode is active — no Paystack keys are configured. Orders can still be marked paid manually. See the README to go live.</p>';
+  }
+  loadOrders();
+}
+init();
+</script>
+</body>
+</html>

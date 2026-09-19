@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shipping rates — BoboOnigo Seller Dashboard</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <aside class="admin-sidebar">
+    <a class="brand" href="/admin/index.html"><img src="/img/logo.svg" alt="BoboOnigo" class="logo"></a>
+    <a href="/admin/index.html">Orders</a>
+    <a href="/admin/products.html">Products</a>
+    <a href="/admin/shipping.html" class="active">Shipping rates</a>
+    <a href="#" id="logout-btn">Log out</a>
+  </aside>
+  <div class="admin-main">
+    <h1>Shipping rates</h1>
+    <p class="small-muted">Lagos is always free shipping and can't be changed. Set a delivery fee (in Naira) for every other state — this is what buyers are charged at checkout.</p>
+    <div id="rates-container">Loading…</div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+async function loadRates() {
+  const container = document.getElementById('rates-container');
+  container.innerHTML = 'Loading…';
+  const res = await adminFetch('/api/admin/shipping-rates');
+  const data = await res.json();
+  container.innerHTML = `
+    <form id="rates-form">
+      <table class="data-table">
+        <thead><tr><th>State</th><th>Shipping fee (₦)</th></tr></thead>
+        <tbody>
+          ${data.rates.map(r => `
+            <tr>
+              <td>${escapeHtml(r.state)}${r.state === 'Lagos' ? ' <span class="free-shipping-tag">(free)</span>' : ''}</td>
+              <td>
+                <input type="number" min="0" name="${escapeHtml(r.state)}" value="${r.fee}"
+                  ${r.state === 'Lagos' ? 'disabled' : ''} style="width:120px;">
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <button type="submit" style="margin-top:16px;">Save shipping rates</button>
+      <span id="saved-msg" class="small-muted hidden" style="margin-left:10px;color:var(--success);">Saved!</span>
+    </form>
+  `;
+  document.getElementById('rates-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const rates = [];
+    for (const [state, fee] of fd.entries()) {
+      rates.push({ state, fee: parseInt(fee, 10) || 0 });
+    }
+    await adminFetch('/api/admin/shipping-rates', { method: 'PUT', body: JSON.stringify({ rates }) });
+    const msg = document.getElementById('saved-msg');
+    msg.classList.remove('hidden');
+    setTimeout(() => msg.classList.add('hidden'), 2000);
+  });
+}
+
+async function init() {
+  const session = await requireAdminAuth();
+  if (!session) return;
+  wireLogout();
+  loadRates();
+}
+init();
+</script>
+</body>
+</html>

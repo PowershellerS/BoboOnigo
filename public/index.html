@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BoboOnigo — Shop Glasses</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/img/logo.svg" alt="BoboOnigo" class="logo"></a>
+  <nav class="nav-actions">
+    <a class="cart-link" href="/cart.html">Cart <span class="cart-count" id="cart-count">0</span></a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>Frames for every face, priced fairly.</h1>
+    <p>Browse our eyewear collection below. Pay securely online, and enjoy free shipping anywhere in Lagos — a flat delivery fee applies to other states.</p>
+    <div class="badge-strip">
+      <span class="badge">🚚 Free shipping in Lagos</span>
+      <span class="badge">🔒 Secure Paystack checkout</span>
+      <span class="badge">📦 Delivery nationwide</span>
+    </div>
+  </section>
+
+  <div id="product-grid" class="product-grid"></div>
+  <div id="empty" class="empty-state hidden">No glasses are available right now — please check back soon.</div>
+</main>
+
+<footer class="site-footer">
+  BoboOnigo &middot; <a href="/admin/login.html">Seller login</a>
+</footer>
+
+<script src="/js/cart.js"></script>
+<script>
+async function loadProducts() {
+  const grid = document.getElementById('product-grid');
+  const empty = document.getElementById('empty');
+  try {
+    const res = await fetch('/api/products');
+    const data = await res.json();
+    if (!data.products || data.products.length === 0) {
+      empty.classList.remove('hidden');
+      return;
+    }
+    grid.innerHTML = data.products.map(renderCard).join('');
+  } catch (err) {
+    grid.innerHTML = '<p class="alert alert-error">Could not load products. Please refresh the page.</p>';
+  }
+}
+
+function renderCard(p) {
+  const stockNote = p.stock <= 0
+    ? '<p class="stock-note out">Out of stock</p>'
+    : (p.stock <= 5 ? `<p class="stock-note low">Only ${p.stock} left</p>` : '');
+  return `
+    <a class="product-card" href="/product.html?id=${p.id}">
+      <img src="${p.image || '/img/frame-black.svg'}" alt="${escapeHtml(p.name)}">
+      <div class="info">
+        <h3>${escapeHtml(p.name)}</h3>
+        <div class="price">${formatNaira(p.price)}</div>
+        ${stockNote}
+      </div>
+    </a>
+  `;
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+loadProducts();
+</script>
+</body>
+</html>

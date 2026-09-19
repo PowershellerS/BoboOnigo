@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Cart — BoboOnigo</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/img/logo.svg" alt="BoboOnigo" class="logo"></a>
+  <nav class="nav-actions">
+    <a class="cart-link" href="/cart.html">Cart <span class="cart-count" id="cart-count">0</span></a>
+  </nav>
+</header>
+
+<main>
+  <h1>Your cart</h1>
+  <div id="content">Loading…</div>
+</main>
+
+<footer class="site-footer">BoboOnigo &middot; <a href="/admin/login.html">Seller login</a></footer>
+
+<script src="/js/cart.js"></script>
+<script>
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function load() {
+  const content = document.getElementById('content');
+  const cart = getCart();
+  if (cart.length === 0) {
+    content.innerHTML = `<div class="empty-state"><p>Your cart is empty.</p><a class="btn" href="/">Browse glasses</a></div>`;
+    return;
+  }
+  let products;
+  try {
+    const res = await fetch('/api/products');
+    products = (await res.json()).products;
+  } catch {
+    content.innerHTML = '<p class="alert alert-error">Could not load your cart. Please refresh.</p>';
+    return;
+  }
+
+  const rows = [];
+  let subtotal = 0;
+  let cleaned = false;
+  for (const item of cart) {
+    const product = products.find((p) => p.id === item.productId);
+    if (!product) { cleaned = true; continue; }
+    const qty = Math.min(item.quantity, Math.max(product.stock, 0));
+    if (qty !== item.quantity) cleaned = true;
+    if (qty <= 0) { cleaned = true; continue; }
+    subtotal += product.price * qty;
+    rows.push({ product, qty });
+  }
+  if (cleaned) saveCart(rows.map(r => ({ productId: r.product.id, quantity: r.qty })));
+
+  if (rows.length === 0) {
+    content.innerHTML = `<div class="empty-state"><p>Your cart is empty.</p><a class="btn" href="/">Browse glasses</a></div>`;
+    return;
+  }
+
+  content.innerHTML = `
+    <table class="cart-table">
+      <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Line total</th><th></th></tr></thead>
+      <tbody>
+        ${rows.map(({product, qty}) => `
+          <tr class="cart-item-row" data-id="${product.id}">
+            <td><img src="${product.image || '/img/frame-black.svg'}" alt="">
+              <span class="cart-item-name">${escapeHtml(product.name)}</span></td>
+            <td>${formatNaira(product.price)}</td>
+            <td>
+              <div class="qty-controls">
+                <button class="dec">-</button>
+                <span class="qty-val">${qty}</span>
+                <button class="inc" ${qty >= product.stock ? 'disabled' : ''}>+</button>
+              </div>
+            </td>
+            <td>${formatNaira(product.price * qty)}</td>
+            <td><button class="btn-secondary remove-btn">Remove</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <div class="summary-box">
+      <div class="summary-row"><span>Subtotal</span><span>${formatNaira(subtotal)}</span></div>
+      <p class="small-muted">Shipping is calculated at checkout based on your delivery state (free within Lagos).</p>
+      <button id="checkout-btn" style="width:100%;margin-top:10px;">Proceed to checkout</button>
+      <a class="btn btn-secondary" href="/" style="width:100%;text-align:center;margin-top:8px;">Continue shopping</a>
+    </div>
+  `;
+
+  content.querySelectorAll('.cart-item-row').forEach((row) => {
+    const id = parseInt(row.dataset.id, 10);
+    const product = products.find((p) => p.id === id);
+    row.querySelector('.inc').addEventListener('click', () => {
+      const current = getCart().find((i) => i.productId === id);
+      const next = (current ? current.quantity : 0) + 1;
+      if (next > product.stock) return;
+      setCartQuantity(id, next);
+      load();
+    });
+    row.querySelector('.dec').addEventListener('click', () => {
+      const current = getCart().find((i) => i.productId === id);
+      const next = Math.max(0, (current ? current.quantity : 0) - 1);
+      setCartQuantity(id, next);
+      load();
+    });
+    row.querySelector('.remove-btn').addEventListener('click', () => {
+      removeFromCart(id);
+      load();
+    });
+  });
+
+  document.getElementById('checkout-btn').addEventListener('click', () => {
+    location.href = '/checkout.html';
+  });
+}
+
+load();
+</script>
+</body>
+</html>

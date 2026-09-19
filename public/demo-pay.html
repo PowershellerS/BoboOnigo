@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo Payment — BoboOnigo</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/img/logo.svg" alt="BoboOnigo" class="logo"></a>
+  <nav class="nav-actions">
+    <a class="cart-link" href="/cart.html">Cart <span class="cart-count" id="cart-count">0</span></a>
+  </nav>
+</header>
+
+<main>
+  <div class="admin-login-card" style="max-width:460px;margin:40px auto;">
+    <p class="alert alert-info">
+      <strong>Demo payment mode.</strong> No Paystack keys are configured yet, so this page
+      stands in for the real payment page. Add your Paystack keys to <code>.env</code> to accept
+      real card payments — see the README.
+    </p>
+    <h2>Confirm payment</h2>
+    <p>Reference: <code id="ref"></code></p>
+    <button id="pay-btn">Simulate successful payment</button>
+    <p id="msg" class="small-muted"></p>
+  </div>
+</main>
+
+<script src="/js/cart.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const orderId = params.get('orderId');
+const token = params.get('token');
+const reference = params.get('reference');
+document.getElementById('ref').textContent = reference || '';
+
+document.getElementById('pay-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('pay-btn');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+  try {
+    const res = await fetch(`/api/orders/${orderId}/demo-pay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken: token }),
+    });
+    if (!res.ok) throw new Error();
+    location.href = `/order-success.html?reference=${encodeURIComponent(reference)}&token=${encodeURIComponent(token)}`;
+  } catch {
+    document.getElementById('msg').textContent = 'Could not confirm payment. Please try again.';
+    btn.disabled = false;
+    btn.textContent = 'Simulate successful payment';
+  }
+});
+</script>
+</body>
+</html>

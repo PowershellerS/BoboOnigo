@@ -1,0 +1,15 @@
+{
+  "name": "glasses-shop",
+  "version": "1.0.0",
+  "description": "Eyewear ecommerce site with cart, Paystack checkout, Lagos free-shipping rule, and a seller dashboard for fulfillment.",
+  "main": "server/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/index.js",
+    "seed": "node server/seed.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "license": "UNLICENSED"
+}

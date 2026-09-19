@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Checkout — BoboOnigo</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/img/logo.svg" alt="BoboOnigo" class="logo"></a>
+  <nav class="nav-actions">
+    <a class="cart-link" href="/cart.html">Cart <span class="cart-count" id="cart-count">0</span></a>
+  </nav>
+</header>
+
+<main>
+  <h1>Checkout</h1>
+  <div id="error-box"></div>
+  <div id="layout" class="checkout-layout"></div>
+</main>
+
+<footer class="site-footer">BoboOnigo &middot; <a href="/admin/login.html">Seller login</a></footer>
+
+<script src="/js/cart.js"></script>
+<script>
+let STATES = [];
+let PRODUCTS = [];
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function init() {
+  const cart = getCart();
+  if (cart.length === 0) {
+    document.getElementById('layout').innerHTML = `<div class="empty-state"><p>Your cart is empty.</p><a class="btn" href="/">Browse glasses</a></div>`;
+    return;
+  }
+
+  const params = new URLSearchParams(location.search);
+  if (params.get('error')) {
+    document.getElementById('error-box').innerHTML = `<p class="alert alert-error">Something went wrong starting your payment. Please try again.</p>`;
+  }
+
+  const [statesRes, productsRes] = await Promise.all([fetch('/api/states'), fetch('/api/products')]);
+  STATES = (await statesRes.json()).states;
+  PRODUCTS = (await productsRes.json()).products;
+
+  renderLayout();
+}
+
+function currentCartRows() {
+  const cart = getCart();
+  const rows = [];
+  for (const item of cart) {
+    const product = PRODUCTS.find((p) => p.id === item.productId);
+    if (!product) continue;
+    const qty = Math.min(item.quantity, product.stock);
+    if (qty <= 0) continue;
+    rows.push({ product, qty });
+  }
+  return rows;
+}
+
+function renderLayout() {
+  const rows = currentCartRows();
+  const subtotal = rows.reduce((s, r) => s + r.product.price * r.qty, 0);
+
+  document.getElementById('layout').innerHTML = `
+    <form class="checkout-form" id="checkout-form">
+      <h3>Contact</h3>
+      <div class="form-row"><label>Full name</label><input type="text" name="name" required></div>
+      <div class="two-col">
+        <div class="form-row"><label>Email</label><input type="email" name="email" required></div>
+        <div class="form-row"><label>Phone</label><input type="tel" name="phone" required></div>
+      </div>
+      <h3>Delivery address</h3>
+      <div class="form-row"><label>Street address</label><input type="text" name="line" required></div>
+      <div class="two-col">
+        <div class="form-row"><label>City</label><input type="text" name="city" required></div>
+        <div class="form-row">
+          <label>State</label>
+          <select name="state" id="state-select" required>
+            <option value="">Select a state…</option>
+            ${STATES.map((s) => `<option value="${s}">${s}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <button type="submit" id="pay-btn">Continue to payment</button>
+      <p class="small-muted" id="submit-error"></p>
+    </form>
+    <div class="summary-box" id="summary-box">
+      ${rows.map(r => `<div class="summary-row"><span>${escapeHtml(r.product.name)} × ${r.qty}</span><span>${formatNaira(r.product.price * r.qty)}</span></div>`).join('')}
+      <div class="summary-row"><span>Subtotal</span><span>${formatNaira(subtotal)}</span></div>
+      <div class="summary-row"><span>Shipping</span><span id="shipping-fee-display">Select a state</span></div>
+      <div class="summary-row total"><span>Total</span><span id="total-display">${formatNaira(subtotal)}</span></div>
+    </div>
+  `;
+
+  const stateSelect = document.getElementById('state-select');
+  stateSelect.addEventListener('change', async () => {
+    const feeDisplay = document.getElementById('shipping-fee-display');
+    const totalDisplay = document.getElementById('total-display');
+    if (!stateSelect.value) { feeDisplay.textContent = 'Select a state'; totalDisplay.textContent = formatNaira(subtotal); return; }
+    feeDisplay.textContent = '…';
+    const res = await fetch(`/api/shipping/quote?state=${encodeURIComponent(stateSelect.value)}`);
+    const data = await res.json();
+    feeDisplay.innerHTML = data.freeShipping ? '<span class="free-shipping-tag">FREE (Lagos)</span>' : formatNaira(data.fee);
+    totalDisplay.textContent = formatNaira(subtotal + data.fee);
+  });
+
+  document.getElementById('checkout-form').addEventListener('submit', onSubmit);
+}
+
+async function onSubmit(e) {
+  e.preventDefault();
+  const form = e.target;
+  const payBtn = document.getElementById('pay-btn');
+  const errorEl = document.getElementById('submit-error');
+  errorEl.textContent = '';
+  payBtn.disabled = true;
+  payBtn.textContent = 'Processing…';
+
+  const rows = currentCartRows();
+  const items = rows.map((r) => ({ productId: r.product.id, quantity: r.qty }));
+  const fd = new FormData(form);
+  const payload = {
+    items,
+    customer: { name: fd.get('name'), email: fd.get('email'), phone: fd.get('phone') },
+    address: { line: fd.get('line'), city: fd.get('city'), state: fd.get('state') },
+  };
+
+  try {
+    const res = await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Could not place your order.';
+      payBtn.disabled = false;
+      payBtn.textContent = 'Continue to payment';
+      return;
+    }
+
+    // Cart is cleared now that the order has been created server-side.
+    clearCart();
+
+    if (data.demo) {
+      location.href = `/demo-pay.html?orderId=${data.orderId}&token=${data.accessToken}&reference=${encodeURIComponent(data.reference)}`;
+    } else {
+      location.href = data.authorizationUrl;
+    }
+  } catch (err) {
+    errorEl.textContent = 'Network error — please try again.';
+    payBtn.disabled = false;
+    payBtn.textContent = 'Continue to payment';
+  }
+}
+
+init();
+</script>
+</body>
+</html>

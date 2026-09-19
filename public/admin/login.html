@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seller login — BoboOnigo</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="admin-login-shell">
+  <div class="admin-login-card">
+    <a href="/" class="brand" style="margin-bottom:16px;"><img src="/img/logo.svg" alt="BoboOnigo" class="logo"></a>
+    <h2>Seller login</h2>
+    <p class="small-muted">Enter the admin password to manage products, orders and shipping.</p>
+    <form id="login-form">
+      <div class="form-row">
+        <label>Password</label>
+        <input type="password" name="password" required autofocus>
+      </div>
+      <p id="error" class="alert alert-error hidden" style="margin-top:10px;"></p>
+      <button type="submit" style="width:100%;margin-top:14px;">Log in</button>
+    </form>
+    <p class="small-muted" style="margin-top:14px;"><a href="/">&larr; Back to shop</a></p>
+  </div>
+</div>
+<script>
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const password = new FormData(e.target).get('password');
+  const errorEl = document.getElementById('error');
+  errorEl.classList.add('hidden');
+  const res = await fetch('/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (res.ok) {
+    location.href = '/admin/index.html';
+  } else {
+    errorEl.textContent = 'Incorrect password.';
+    errorEl.classList.remove('hidden');
+  }
+});
+
+// If already logged in, skip straight to the dashboard.
+fetch('/api/admin/session').then(r => r.json()).then(d => {
+  if (d.authenticated) location.href = '/admin/index.html';
+});
+</script>
+</body>
+</html>

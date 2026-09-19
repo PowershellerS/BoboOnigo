@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order confirmation — BoboOnigo</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/img/logo.svg" alt="BoboOnigo" class="logo"></a>
+  <nav class="nav-actions">
+    <a class="cart-link" href="/cart.html">Cart <span class="cart-count" id="cart-count">0</span></a>
+  </nav>
+</header>
+
+<main>
+  <div id="content">Checking your payment…</div>
+</main>
+
+<footer class="site-footer">BoboOnigo &middot; <a href="/admin/login.html">Seller login</a></footer>
+
+<script src="/js/cart.js"></script>
+<script>
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function load() {
+  const params = new URLSearchParams(location.search);
+  const reference = params.get('reference');
+  const token = params.get('token');
+  const content = document.getElementById('content');
+
+  if (!reference || !token) {
+    content.innerHTML = '<p class="alert alert-error">We could not find that order.</p>';
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/orders/by-reference?reference=${encodeURIComponent(reference)}&token=${encodeURIComponent(token)}`);
+    if (!res.ok) {
+      content.innerHTML = '<p class="alert alert-error">We could not find that order. If you completed payment, please contact us with your reference: <code>' + escapeHtml(reference) + '</code></p>';
+      return;
+    }
+    const { order } = await res.json();
+    render(order, reference);
+  } catch {
+    content.innerHTML = '<p class="alert alert-error">Something went wrong loading your order.</p>';
+  }
+}
+
+function render(order, reference) {
+  const content = document.getElementById('content');
+  const paid = order.status !== 'pending_payment' && order.status !== 'cancelled';
+  content.innerHTML = `
+    ${paid
+      ? `<p class="alert alert-success">Thank you, ${escapeHtml(order.customerName)}! Your payment was received and your order is confirmed.</p>`
+      : `<p class="alert alert-error">We haven't received payment for this order yet. Reference: <code>${escapeHtml(reference)}</code></p>`}
+    <h1>Order #${order.id}</h1>
+    <p><span class="status-pill status-${order.status}">${order.status.replace('_',' ')}</span></p>
+    <h3>Items</h3>
+    <ul>
+      ${order.items.map(i => `<li>${escapeHtml(i.name)} × ${i.quantity} — ${formatNaira(i.unitPrice * i.quantity)}</li>`).join('')}
+    </ul>
+    <p>Subtotal: ${formatNaira(order.subtotal)}<br>
+    Shipping (${escapeHtml(order.state)}): ${order.shippingFee === 0 ? 'FREE' : formatNaira(order.shippingFee)}<br>
+    <strong>Total: ${formatNaira(order.total)}</strong></p>
+    <h3>Delivery to</h3>
+    <p>${escapeHtml(order.addressLine)}, ${escapeHtml(order.city)}, ${escapeHtml(order.state)}<br>
+    ${escapeHtml(order.phone)} &middot; ${escapeHtml(order.email)}</p>
+    <p class="small-muted">Keep this page's link if you'd like to check your order status again later.</p>
+    <a class="btn" href="/">Continue shopping</a>
+  `;
+}
+
+load();
+</script>
+</body>
+</html>
